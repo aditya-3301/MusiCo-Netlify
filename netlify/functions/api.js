@@ -144,6 +144,10 @@ app.get('/stream', async (req, res) => {
         if (range) {
             const parts = range.replace(/bytes=/, "").split("-");
             const start = parseInt(parts[0], 10);
+
+            // Limit chunks to 4MB to prevent Netlify 6MB payload crashes
+            const MAX_CHUNK = 4 * 1024 * 1024;
+
             const end = parts[1] ? parseInt(parts[1], 10) : size - 1;
             const chunksize = (end - start) + 1;
 
@@ -171,4 +175,6 @@ app.get('/stream', async (req, res) => {
     }
 });
 
-module.exports.handler = serverless(app);
+module.exports.handler = serverless(app, {
+    binary: ['audio/mpeg', 'audio/mp3', 'audio/mp4', 'audio/x-m4a', 'audio/*']
+});
