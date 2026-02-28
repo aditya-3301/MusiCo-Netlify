@@ -4,12 +4,12 @@
 
 [[redirects]]
   from = "/api/*"
-  to = "/.netlify/functions/api/api/:splat"
+  to = "/.netlify/functions/api"
   status = 200
 
 [[redirects]]
   from = "/stream"
-  to = "/.netlify/functions/api/stream"
+  to = "/.netlify/functions/api"
   status = 200
 
 [[redirects]]
