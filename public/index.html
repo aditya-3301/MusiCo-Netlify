@@ -1,0 +1,403 @@
+<!DOCTYPE html>
+<html lang="en">
+<link rel="stylesheet" href="style.css">
+<head>
+    <title>MusiCo - by Aditya</title>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/gsap.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/gsap/3.12.2/Draggable.min.js"></script>
+</head>
+<body>
+    <div id="particles-js"></div>
+    
+    <div class="player-bar">
+        
+        <div class="custom-controls">
+            <button id="shuffle-btn" class="glass-tint-muted" onclick="toggle_shuffle()">🔀</button>
+            <button id="prev-btn">⏮</button>
+            <button id="play-btn" class="glass-tint-black" onclick="toggle_play()">▶</button>
+            <button id="next-btn" class="glass-tint-muted">⏭</button>
+        </div>
+        
+        <div class="progress-container">
+            <span id="current-time">0:00</span>
+            <input type="range" id="progress-bar" value="0" max="100">
+            <span id="total-time">0:00</span>
+        </div>
+
+        <div id="now-playing">
+            <div id="np-title">PLAY SOMETHING manually for it to startup or else it wont load</div>
+            <div id="np-artist"></div>
+        </div>
+        <audio id="audio-player"></audio>
+    </div>
+
+    <div class="layout">
+        <nav class="sidebar">
+            <h2>Welcome, Aditya</h2>
+            <input type="text" id="search-box" placeholder="Search" onkeyup="filter_songs()">
+            
+            <div id="playlist-wrapper">
+                <h3 style="margin: 10px 0 10px 10px; font-size: 12px; color: #9ca3af; text-transform: uppercase; letter-spacing: 1px;">Playlists</h3>
+                <div id="playlist-container">
+                    <div style="padding: 10px; font-size: 13px; color: #9ca3af;">Loading folders...</div>
+                </div>
+            </div>
+            
+        </nav>
+        <main class="content">
+            <h1>All Songs in mega:</h1>
+            <div id="track-list">loading tracks...</div>
+        </main>
+    </div>
+    
+    <script>
+        const user = prompt("username:");
+        const pass = prompt("password:");
+        alert(`PLAY ANY song manually once site loads for it to startup else songs wont load`);
+
+        let current_playlist = [];
+        let current_track_index = -1;
+        let is_shuffle = false; 
+        let current_folder = 'main';
+
+        //  Ts gives a beautiful buffer-less next song play
+        const ghost_player = new Audio();
+        ghost_player.preload = 'auto'; // Tells browser to start fetching data immediately
+        let has_preloaded_next = false;
+
+        //FETCH FOLDERS FUNCTION ---
+        async function fetch_folders() {
+            const container = document.getElementById('playlist-container');
+            if (!container) return; // Safety check just in case
+
+            container.innerHTML = '<div style="padding: 10px; font-size: 13px; color: #9ca3af;">Loading folders...</div>';
+
+            try {
+                const res = await fetch(`/api/folders?user=${user}&pass=${pass}`);
+                if (!res.ok) throw new Error("Failed to fetch folders");
+                
+                const folders = await res.json();
+                container.innerHTML = ''; // Clear the "Loading..." text
+
+                folders.forEach(folderName => {
+                    const div = document.createElement('div');
+                    div.className = 'folder-item';
+                    div.innerText = folderName;
+                    
+                    // When a folder is clicked, update the state and reload the track list
+                    div.onclick = () => {
+                        current_folder = folderName;
+                        
+                        // Optional: Clear search box if you have one
+                        const searchBox = document.getElementById('search-box');
+                        if(searchBox) {
+                            searchBox.value = ''; 
+                            filter_songs();
+                        }
+                        
+                        load_tracks(); // Fetch the new folder's songs
+                    };
+                    
+                    container.appendChild(div);
+                });
+            } catch (error) {
+                container.innerHTML = '<div style="padding: 10px; color: #ff4d4d;">Failed to load folders.</div>';
+                console.error("Folder Fetch Error:", error);
+            }
+        }
+
+        // --- Toggle shuffle state and update button colors ---
+        function toggle_shuffle() {
+            is_shuffle = !is_shuffle;
+            const btn = document.getElementById('shuffle-btn');
+            
+            if (is_shuffle) {
+                btn.classList.remove('glass-tint-muted');
+                btn.style.backgroundColor = 'white';
+                btn.style.color = 'black'; 
+            } else {
+                btn.style.backgroundColor = '';
+                btn.style.color = '';
+                btn.classList.add('glass-tint-muted');
+            }
+        }
+        
+        async function load_tracks() {
+            // UPDATED: Now includes &folder=... in the request
+            const res = await fetch(`/api/playlist?user=${user}&pass=${pass}&folder=${encodeURIComponent(current_folder)}`);
+            if (!res.ok) {
+                const error_msg = await res.text();
+                console.error("Server Error:", error_msg);
+                document.getElementById('track-list').innerText = `Error ${res.status}: ${error_msg}`;
+                return;
+            }
+            
+            const list = await res.json();
+            current_playlist = list; 
+            
+            const container = document.getElementById('track-list');
+            container.innerHTML = '';
+
+            list.forEach(raw_item => {
+                let artist = "artist is in Songname itself buddy.";
+                let title = raw_item;
+                
+                if (raw_item.includes('-')) {
+                    const parts = raw_item.split('-');
+                    artist = parts[0].trim();
+                    title = parts.slice(1).join('-').trim(); 
+                }
+
+                const div = document.createElement('div');
+                div.className = 'track-item';
+                div.innerHTML = `<div class="track-title">${title}</div><div class="track-artist">${artist}</div>`;
+                div.onclick = () => play_song(raw_item, title, artist);
+                container.appendChild(div);
+            });
+        }
+
+        function play_song(raw_name, title, artist) {
+            has_preloaded_next = false;
+            current_track_index = current_playlist.indexOf(raw_name); 
+            
+            document.getElementById('np-title').innerText = title;
+            document.getElementById('np-artist').innerText = artist;
+            const player = document.getElementById('audio-player');
+            
+            // UPDATED: Now includes &folder=... in the stream URL
+            player.src = `/stream?filename=${encodeURIComponent(raw_name)}&user=${user}&pass=${pass}&folder=${encodeURIComponent(current_folder)}`;
+            player.play();
+        }
+
+        // Immediately preload next track.
+        function preload_next_track() {
+            if (current_playlist.length < 2) return;
+
+            let next_index = current_track_index;
+            
+            if (is_shuffle) {
+                while (next_index === current_track_index) {
+                    next_index = Math.floor(Math.random() * current_playlist.length);
+                }
+            } else {
+                next_index++;
+                if (next_index >= current_playlist.length) next_index = 0;
+            }
+
+            const raw_name = current_playlist[next_index];
+            const next_url = `/stream?filename=${encodeURIComponent(raw_name)}&user=${user}&pass=${pass}&folder=${encodeURIComponent(current_folder)}`;
+            
+            // Assigning the src and calling load() 
+            // will fetch the first chunk in the background makes it play next song smoothly instantly lol
+            ghost_player.src = next_url;
+            ghost_player.load(); 
+        }
+
+        function filter_songs() {
+            const searchBox = document.getElementById('search-box');
+            if(!searchBox) return;
+            const query = searchBox.value.toLowerCase();
+            const tracks = document.querySelectorAll('.track-item');
+            tracks.forEach(track => {
+                const text = track.innerText.toLowerCase();
+                track.style.display = text.includes(query) ? 'flex' : 'none';
+            });
+        }
+
+        const audio = document.getElementById('audio-player');
+        const play_btn = document.getElementById('play-btn');
+        const progress = document.getElementById('progress-bar');
+        const current_time_text = document.getElementById('current-time');
+        const total_time_text = document.getElementById('total-time');
+
+        
+        function play_next() {
+            if (current_playlist.length === 0) return;
+            
+            if (is_shuffle && current_playlist.length > 1) {
+                let random_index = current_track_index;
+                while (random_index === current_track_index) {
+                    random_index = Math.floor(Math.random() * current_playlist.length);
+                }
+                current_track_index = random_index;
+            } else {
+                current_track_index++;
+                if (current_track_index >= current_playlist.length) current_track_index = 0; 
+            }
+            
+            load_track_from_index(current_track_index);
+        }
+
+        function play_prev() {
+            if (current_playlist.length === 0) return;
+            current_track_index--;
+            if (current_track_index < 0) current_track_index = current_playlist.length - 1; 
+            
+            load_track_from_index(current_track_index);
+        }
+
+        function load_track_from_index(index) {
+            const raw_name = current_playlist[index];
+            let artist = "unknown artist";
+            let title = raw_name;
+            
+            if (raw_name.includes('-')) {
+                const parts = raw_name.split('-');
+                artist = parts[0].trim();
+                title = parts.slice(1).join('-').trim(); 
+            }
+            play_song(raw_name, title, artist);
+        }
+
+        document.getElementById('next-btn').addEventListener('click', play_next);
+        document.getElementById('prev-btn').addEventListener('click', play_prev);
+
+        audio.addEventListener('ended', play_next);
+
+        function toggle_play() {
+            if (audio.paused) audio.play();
+            else audio.pause();
+        }
+
+        audio.addEventListener('play', () => play_btn.innerText = '⏸');
+        audio.addEventListener('pause', () => play_btn.innerText = '▶');
+
+        audio.addEventListener('error', () => {
+            console.error("Playback error: File corrupted or MEGA stream failed.");
+            
+            document.getElementById('np-title').innerText = "⚠️ Stream error / Corrupted file. Skipping...";
+            play_btn.innerText = '▶'; 
+            
+            setTimeout(() => {
+                play_next();
+            }, 900);
+        });
+
+        let current_track_title = ""; 
+        
+        audio.addEventListener('waiting', () => {
+            current_track_title = document.getElementById('np-title').innerText;
+            if (current_track_title !== "STREAM ERROR - Try again") {
+                document.getElementById('np-title').innerText = "Loading stream...";
+            }
+        });
+
+        audio.addEventListener('playing', () => {
+            if (current_track_title && document.getElementById('np-title').innerText === "Loading stream...") {
+                document.getElementById('np-title').innerText = current_track_title;
+            }
+        });
+        
+        audio.addEventListener('timeupdate', () => {
+            if (audio.duration) {
+                progress.value = (audio.currentTime / audio.duration) * 100;
+                current_time_text.innerText = format_time(audio.currentTime);
+                total_time_text.innerText = format_time(audio.duration);
+            }
+
+            //When 15 sec remaning, i will preload the next song.
+            const time_remaining = audio.duration - audio.currentTime;
+                if (time_remaining <= 30 && !has_preloaded_next) {
+                    has_preloaded_next = true;
+                    console.log("Preloading next track to ensure smooth transition...");
+                    preload_next_track();
+                }
+        });
+
+        progress.addEventListener('input', () => {
+            audio.currentTime = (progress.value / 100) * audio.duration;
+        });
+
+        function format_time(seconds) {
+            const min = Math.floor(seconds / 60);
+            const sec = Math.floor(seconds % 60);
+            return `${min}:${sec < 10 ? '0' : ''}${sec}`;
+        }
+
+        // --- STARTUP EXECUTIONS ---
+        fetch_folders(); // Fetch and render folders
+        load_tracks();   // Fetch and render initial main tracks
+</script>
+
+    <script src="particles.js"></script>
+    <script>
+        // This fires up the local file you just created
+        particlesJS("particles-js", {
+            "particles": {
+                "number": { "value": 80 },
+                "color": { "value": "#ffffff" },
+                "shape": { "type": "circle" },
+                "opacity": { "value": 0.5 },
+                "size": { "value": 3 },
+                "line_linked": { "enable": true, "distance": 150, "color": "#ffffff", "opacity": 0.3, "width": 1 },
+                "move": { "enable": true, "speed": 1.5 }
+            },
+            "interactivity": {
+                "events": {
+                    "onhover": { "enable": true, "mode": "grab" }
+                }
+            }
+        });
+        // --- LIQUID GLASS DRAGGABLE ---
+        gsap.registerPlugin(Draggable);
+
+        // --- LIQUID GLASS DRAGGABLE ---
+        gsap.registerPlugin(Draggable);
+
+        Draggable.create(".custom-controls", {
+            type: "x, y",
+            
+            // --- THE ANDROID bullshiting fix
+            dragClickables: false, // buttons can be clicked normally
+            minimumMovement: 10,   //now small wobbles dont slide it like crazy.
+            // -----------------------
+
+            // SHM function lmao
+            onRelease: function () {
+                gsap.to(this.target, {
+                    x: 0,
+                    y: 0,
+                    duration: 1.5,
+                    ease: "elastic.out(1,0.3)"
+                });
+            }
+        });
+
+        //PLAYLIST DRAGGABLE (hell yes)
+        Draggable.create("#playlist-wrapper", {
+            type: "x, y",
+            dragClickables: false, //can click through it now.
+            minimumMovement: 10,   
+            //Slower Onrelease fucntion
+            onRelease: function () {
+                gsap.to(this.target, {
+                    x: 0,
+                    y: 0,
+                    duration: 0.9,
+                    ease: "elastic.out(1,0.3)"
+                });
+            }
+        });
+        toggle_shuffle();
+    </script>
+    
+<svg style="display: none" xmlns="http://www.w3.org/2000/svg">
+      
+      <filter id="glass-blur-player" x="0" y="0" width="100%" height="100%" filterUnits="objectBoundingBox">
+        <feTurbulence type="fractalNoise" baseFrequency="0.003 0.007" numOctaves="1" result="turbulence" />
+        <feDisplacementMap in="SourceGraphic" in2="turbulence" scale="200" xChannelSelector="R" yChannelSelector="G" />
+      </filter>
+
+      <filter id="glass-blur-track" x="0" y="0" width="100%" height="100%" filterUnits="objectBoundingBox">
+        <feTurbulence type="fractalNoise" baseFrequency="0.003 0.007" numOctaves="1" result="turbulence" />
+        <feDisplacementMap in="SourceGraphic" in2="turbulence" scale="130" xChannelSelector="R" yChannelSelector="G" />
+      </filter>
+
+      <filter id="glass-blur-playlist" x="0" y="0" width="100%" height="100%" filterUnits="objectBoundingBox">
+        <feTurbulence type="fractalNoise" baseFrequency="0.003 0.007" numOctaves="1" result="turbulence" />
+        <feDisplacementMap in="SourceGraphic" in2="turbulence" scale="150" xChannelSelector="R" yChannelSelector="G" />
+      </filter>
+    </svg>
+
+</body>
+</html>

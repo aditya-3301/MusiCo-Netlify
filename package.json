@@ -1,0 +1,26 @@
+{
+  "name": "musico",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/aditya-3301/MusiCo.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "bugs": {
+    "url": "https://github.com/aditya-3301/MusiCo/issues"
+  },
+  "homepage": "https://github.com/aditya-3301/MusiCo#readme",
+  "dependencies": {
+    "dotenv": "^17.3.1",
+    "express": "^5.2.1",
+    "megajs": "^1.3.9",
+    "serverless-http": "^4.0.0"
+  }
+}
