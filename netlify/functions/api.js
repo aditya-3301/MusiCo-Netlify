@@ -115,13 +115,7 @@ app.get('/stream', async (req, res) => {
     
     if (user !== user_auth || pass !== pass_auth) return res.status(401).send('no');
 
-    // Prevent crashing if MEGA hasn't finished logging in yet
-    if (!mega_storage || !mega_storage.root) {
-        return res.status(503).send('MEGA is still connecting, try again in a few seconds');
-    }
-
-    try {
-        // Automatically wake up/connect to MEGA if Vercel went to sleep
+    try {//open meega client 
         const storage = await get_mega_client();
         const target_folder_name = folder || 'main';
         const target_folder = storage.root.children.find(f => f.name === target_folder_name && f.directory);
@@ -145,7 +139,7 @@ app.get('/stream', async (req, res) => {
             const parts = range.replace(/bytes=/, "").split("-");
             const start = parseInt(parts[0], 10);
 
-            // Limit chunks to 4MB to prevent Netlify 6MB payload crashes
+            // Limit chunks to 4MB to prevent Netlify going mad
             const MAX_CHUNK = 4 * 1024 * 1024;
 
             const end = parts[1] ? parseInt(parts[1], 10) : Math.min(start + MAX_CHUNK - 1, size - 1);
