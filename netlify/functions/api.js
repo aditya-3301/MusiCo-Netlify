@@ -148,7 +148,7 @@ app.get('/stream', async (req, res) => {
             // Limit chunks to 4MB to prevent Netlify 6MB payload crashes
             const MAX_CHUNK = 4 * 1024 * 1024;
 
-            const end = parts[1] ? parseInt(parts[1], 10) : size - 1;
+            const end = parts[1] ? parseInt(parts[1], 10) : Math.min(start + MAX_CHUNK - 1, size - 1);
             const chunksize = (end - start) + 1;
 
             res.writeHead(206, {
