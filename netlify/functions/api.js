@@ -140,7 +140,7 @@ app.get('/stream', async (req, res) => {
             const start = parseInt(parts[0], 10);
 
             // Limit chunks to 4MB to prevent Netlify going mad
-            const MAX_CHUNK = 4 * 1024 * 1024;
+            const MAX_CHUNK = 2 * 1024 * 1024;
 
             const end = parts[1] ? parseInt(parts[1], 10) : Math.min(start + MAX_CHUNK - 1, size - 1);
             const chunksize = (end - start) + 1;
